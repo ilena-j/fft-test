@@ -32,12 +32,12 @@ def main():
     u   = x + q*n
     
     # writing input signal for RTL simulation
-    uRe_int16       = np.round((2**15 - 32)*(np.real(u)/np.max(np.real(u))))
-    uIm_int16       = np.round((2**15 - 32)*(np.imag(u)/np.max(np.imag(u))))
-    u_int16         = np.zeros(2*N) # parsing data in the format {re0, im0, re1, im1, ...}
-    u_int16[0::2]   = uRe_int16
-    u_int16[1::2]   = uIm_int16
-    np.savetxt('fft_input.txt', u_int16, fmt='%d')  
+    uRe_int10       = np.round((2**9 - 32)*(np.real(u)/np.max(np.real(u))))
+    uIm_int10       = np.round((2**9 - 32)*(np.imag(u)/np.max(np.imag(u))))
+    u_int10         = np.zeros(2*N) # parsing data in the format {re0, im0, re1, im1, ...}
+    u_int10[0::2]   = uRe_int10
+    u_int10[1::2]   = uIm_int10
+    np.savetxt('fft_input.txt', u_int10, fmt='%d')  
     
     
     # normalized FFT

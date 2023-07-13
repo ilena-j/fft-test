@@ -10,53 +10,39 @@ module fft_tb();
 parameter       CLOCK_PERIOD    = 10;
 parameter       T_HOLD    = 1;
 
+// FFT I/O ----------------------------------------------------------------------------------------
+reg             aresetn = 0; // FFT's active low reset
+reg             aclk    = 0; // clock
 
-reg             aresetn = 0;
-reg             aclk    = 0;
-
-reg 			s_axis_config_tvalid = 0;
-//reg  [23 : 0] 	s_axis_config_tdata = 0;
+reg 			s_axis_config_tvalid = 0; // Configuration Channel
 reg [15:0]      s_axis_config_tdata = 0;
-
 wire 			s_axis_config_tready;
 
-reg  [31 : 0]   s_axis_data_tdata = 0;
+reg  [31 : 0]   s_axis_data_tdata = 0;  // Data Input Channel
 reg     		s_axis_data_tvalid = 0;
 wire     		s_axis_data_tready;
 reg    			s_axis_data_tlast = 0;
 
-wire [31 : 0] 	m_axis_data_tdata;
+wire [31 : 0] 	m_axis_data_tdata;      // Data Output Channel
 wire    		m_axis_data_tvalid;
 reg    			m_axis_data_tready = 1;
 wire    		m_axis_data_tlast = 0;
 
-wire 			event_frame_started;
+wire 			event_frame_started;    // Status Signals
 wire    		event_tlast_unexpected;
 wire    		event_tlast_missing;
 wire    		event_status_channel_halt;
 wire    		event_data_in_channel_halt;
 wire    		event_data_out_channel_halt;
 
-
-integer         fp_in   = 0;
-integer         fp_out  = 0;
-integer         fft_en  = 0;
-
-function integer clogb2;
-input [31:0] value;
-integer i;
-begin
-    clogb2 = 0;
-    for(i = 0; 2**i < value; i = i + 1)
-    clogb2 = i + 1;
-end
-endfunction
-
+// INPUT FILES
+integer         fp_in   = 0; // input file
+integer         fp_out  = 0; // output file
 
 always
     #(CLOCK_PERIOD/2) aclk = ~aclk;
     
-       
+// RESET LOGIC ------------------------------------------------------------------------------------   
 event reset_start;
 event reset_done;
 
@@ -72,15 +58,27 @@ $display("<-- Reset");
 $display("<-- Reset done");
 end
 
+// CONFIGURATION CHANNEL --------------------------------------------------------------------------
+// The configuration channel sets the scaling schedule & whether to do a forward or inverse FFT. 
+// We write the settings we want into s_axis_config_tdata (16 bits), and then do an AXI Stream handshake.
+// See the Google Drive document, "customizing & instantiating the FFT IP core" for more info
+reg [6:0] ZERO_PAD = 7'b0; // zero padding
+reg [7:0] SCALE_SCHEDULE = 8'b01101011; // scale schedule
+parameter FWD = 1'b1; // forward FFT
+parameter INV = 1'b0; // inverse FFT
+
+
+// DRIVE INPUT DATA -------------------------------------------------------------------------------
+// Task to drive 1 sample of data into the FFT. Performs the AXI Stream handshake.
 task drive_sample;
     input reg [31:0]                data;
     input reg                       last;
-    input integer                   valid_mode;
+    input integer                   valid_mode; // always 0 for us
     begin
         s_axis_data_tdata <= data;
         s_axis_data_tlast <= last;
         
-        if (valid_mode == 1) begin
+        if (valid_mode == 1) begin // not using 
             s_axis_data_tvalid <= 0;
             repeat(1 + $urandom%4)@(posedge aclk);
             s_axis_data_tvalid <= 1;
@@ -91,20 +89,22 @@ task drive_sample;
         end
         
         @(posedge aclk);
-        while(s_axis_data_tready == 0 ) @(posedge aclk);
+        while(s_axis_data_tready == 0 ) @(posedge aclk); // don't continue until the FFT is ready
         #T_HOLD;
         s_axis_data_tvalid <= 0;
     end
  endtask
     
-    
+
+// Task to drive 128 samples of data into the FFT. Reads data in from file & calls drive_sample
  task drive_frame;
-    input integer N;
-    input integer valid_mode;
-    input integer fp;
+    input integer N; // 128
+    input integer valid_mode; // always 0
+    input integer fp; // input file
+
     reg sample_last;
-    integer idx;
-    reg [15:0] x_re, x_im;
+    integer idx; // index -- 0 to 127
+    reg [15:0] x_re, x_im; // real and imaginary data: in the input file, real data is on even lines & imag data on odd lines
     begin
          
           idx = 0;
@@ -115,70 +115,43 @@ task drive_sample;
             
             $fscanf(fp, " %d\n",  x_re);
 			$fscanf(fp, " %d\n",  x_im);			
-            sample_last = (idx == N - 1) ? 1 : 0;
+            sample_last = (idx == N - 1) ? 1 : 0; // assert s_axis_data_tlast when it's the last sample
             drive_sample({x_im, x_re}, sample_last, valid_mode);    
             idx = idx + 1;
         end
         
     end
  endtask 
- 
-reg  [11 : 0]   config_reg = 0;
-reg   [3 : 0]     log2nFFT = 0;
-reg   [4 : 0]   FWD  = 5'b10000;
-reg   [4 : 0]   INV  = 5'b00000;
- 
-always @(*)
-      case (log2nFFT)
-         4'b0000: config_reg = 12'd6;
-         4'b0001: config_reg = 12'd6;
-         4'b0010: config_reg = 12'd6;
-         4'b0011: config_reg = 12'd6;
-         4'b0100: config_reg = 12'd10;
-         4'b0101: config_reg = 12'd26;
-         4'b0110: config_reg = 12'd42;
-         4'b0111: config_reg = 12'd106;
-         
-         4'b1000: config_reg = 12'd170;
-         4'b1001: config_reg = 12'd426;
-         4'b1010: config_reg = 12'd682;
-         4'b1011: config_reg = 12'd1706;
-         4'b1100: config_reg = 12'd2730;
-         4'b1101: config_reg = 12'd2730;
-         4'b1110: config_reg = 12'd2730;
-         4'b1111: config_reg = 12'd2730;
-      endcase
 
-
+// INITIAL BEGIN ----------------------------------------------------------------------------------
 initial begin
+
 $display("<-- Start simulation");
 repeat(10)@(posedge aclk);
--> reset_start;
+
+-> reset_start; // Reset
 @(reset_done);
 
 @(posedge aclk);
 repeat(10)@(posedge aclk);
 
 $display("<-- Start FFT 128 points");
-fft_en = 1;
-log2nFFT = clogb2(128);
 
-@(posedge aclk);
-s_axis_config_tvalid = 0;
-s_axis_config_tdata  = {7'b0, 8'b01101011, 1'b1};
+// Configure the FFT: Do an AXI Stream handshake
+s_axis_config_tdata  = {ZERO_PAD, SCALE_SCHEDULE, FWD}; // at this point, TVALID is low
 @ (posedge aclk);
-s_axis_config_tvalid = 1;
-while(s_axis_config_tready == 0 ) begin
-    @(posedge aclk);
-end
-@(posedge aclk);
-s_axis_config_tvalid = 0;
+s_axis_config_tvalid = 1; // assert TVALID
+while(s_axis_config_tready == 0 ) begin // wait for the FFT to assert TREADY. 
+    @(posedge aclk);                    // When both TVALID and TREADY are high, the FFT will
+end                                     // take in whatever data is on that channel's TDATA line.
+@(posedge aclk);                        
+s_axis_config_tvalid = 0;               // After TREADY goes high, you can de-assert TVALID and TDATA
 
-@ (posedge aclk);
-
-
+// Open files
 fp_in  = $fopen("C:/Users/ilena/Documents/apr-private/fpga/fft-test/files-ripoff/fft_input.txt", "r");
 fp_out = $fopen("C:/Users/ilena/Documents/apr-private/fpga/fft-test/files-ripoff/fft_out.txt", "w");
+
+// Drive the input data
 drive_frame(128, 0, fp_in);
 @(posedge aclk);
 $fclose(fp_in);
@@ -186,25 +159,23 @@ $fclose(fp_in);
 @(posedge m_axis_data_tlast);
 repeat(10)@(posedge aclk);
 $fclose(fp_out);
-fft_en = 0;
 
 $display("<-- Start Inverse FFT 512 points");
-fp_in = $fopen("C:/Users/ilena/Documents/apr-private/fpga/fft-test/files-ripoff/fft_out.txt", "r");
+fp_in = $fopen("C:/Users/ilena/Documents/apr-private/fpga/fft-test/files-ripoff/fft_out.txt", "r"); // feed the forward FFT output back in
 fp_out = $fopen("C:/Users/ilena/Documents/apr-private/fpga/fft-test/files-ripoff/ifft_out.txt", "w");
-log2nFFT = clogb2(128);
-@(posedge aclk);
-s_axis_config_tvalid = 0;
-s_axis_config_tdata  = {7'b0, 8'b01101011, 1'b0};
-@ (posedge aclk);
-s_axis_config_tvalid = 1;
-while(s_axis_config_tready == 0 ) begin
-    @(posedge aclk);
-end
-@(posedge aclk);
-s_axis_config_tvalid = 0;
 
+// Configure the FFT Core to do an inverse FFT
+s_axis_config_tdata  = {ZERO_PAD, SCALE_SCHEDULE, INV}; // at this point, TVALID is low
 @ (posedge aclk);
-drive_frame(512, 0, fp_in);
+s_axis_config_tvalid = 1; // assert TVALID
+while(s_axis_config_tready == 0 ) begin // wait for the FFT to assert TREADY. 
+    @(posedge aclk);                    // When both TVALID and TREADY are high, the FFT will
+end                                     // take in whatever data is on that channel's TDATA line.
+@(posedge aclk);                        
+s_axis_config_tvalid = 0;               // After TREADY goes high, you can de-assert TVALID and TDATA
+
+// Drive the input data
+drive_frame(128, 0, fp_in);
 @(posedge aclk);
 $fclose(fp_in);
 // wait for master tlast
@@ -217,7 +188,7 @@ $display("<-- Simulation done !");
 $finish;
 end // initial begin
 
-
+// Write the FFT output into a file
 always @(posedge aclk)
         if(m_axis_data_tvalid)begin
             $fwrite(fp_out, "%d \n", $signed(m_axis_data_tdata[15: 0]));
@@ -225,7 +196,7 @@ always @(posedge aclk)
         end 
    
 
-
+// FFT INSTANTIATION ------------------------------------------------------------------------------
 xfft_0 dut_0
 (
     .aclk (aclk),
