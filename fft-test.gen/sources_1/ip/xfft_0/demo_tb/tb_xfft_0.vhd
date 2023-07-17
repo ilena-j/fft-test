@@ -129,18 +129,18 @@ architecture tb of tb_xfft_0 is
   signal s_axis_config_tdata_scale_sch    : std_logic_vector(7 downto 0) := (others => '0');  -- scaling schedule
 
   -- Data slave channel alias signals
-  signal s_axis_data_tdata_re             : std_logic_vector(9 downto 0) := (others => '0');  -- real data
-  signal s_axis_data_tdata_im             : std_logic_vector(9 downto 0) := (others => '0');  -- imaginary data
+  signal s_axis_data_tdata_re             : std_logic_vector(10 downto 0) := (others => '0');  -- real data
+  signal s_axis_data_tdata_im             : std_logic_vector(10 downto 0) := (others => '0');  -- imaginary data
 
   -- Data master channel alias signals
-  signal m_axis_data_tdata_re             : std_logic_vector(9 downto 0) := (others => '0');  -- real data
-  signal m_axis_data_tdata_im             : std_logic_vector(9 downto 0) := (others => '0');  -- imaginary data
+  signal m_axis_data_tdata_re             : std_logic_vector(10 downto 0) := (others => '0');  -- real data
+  signal m_axis_data_tdata_im             : std_logic_vector(10 downto 0) := (others => '0');  -- imaginary data
 
   -----------------------------------------------------------------------
   -- Constants, types and functions to create input data
   -----------------------------------------------------------------------
 
-  constant IP_WIDTH    : integer := 10;
+  constant IP_WIDTH    : integer := 11;
   constant MAX_SAMPLES : integer := 2**7;  -- maximum number of samples in a frame
   type T_IP_SAMPLE is record
     re : std_logic_vector(IP_WIDTH-1 downto 0);
@@ -163,7 +163,7 @@ architecture tb of tb_xfft_0 is
     variable im_real : real;
     variable re_int : integer;
     variable im_int : integer;
-    constant DATA_WIDTH : integer := 8;
+    constant DATA_WIDTH : integer := 9;
   begin
     for i in 0 to MAX_SAMPLES-1 loop
       theta   := real(i) / real(MAX_SAMPLES) * 2.6 * 2.0 * MATH_PI;
@@ -305,10 +305,10 @@ begin
       index  := 0;
       while index < data'length loop
         -- Look up sample data in data table, construct TDATA value
-        sample_data(9 downto 0)  := data(index).re;                  -- real data
-        sample_data(15 downto 10) := (others => data(index).re(9));  -- sign-extend
-        sample_data(25 downto 16) := data(index).im;                  -- imaginary data
-        sample_data(31 downto 26) := (others => data(index).im(9));  -- sign-extend
+        sample_data(10 downto 0)  := data(index).re;                  -- real data
+        sample_data(15 downto 11) := (others => data(index).re(10));  -- sign-extend
+        sample_data(26 downto 16) := data(index).im;                  -- imaginary data
+        sample_data(31 downto 27) := (others => data(index).im(10));  -- sign-extend
         -- Construct TLAST's value
         index := index + 1;
         if index >= data'length then
@@ -516,6 +516,23 @@ begin
   -----------------------------------------------------------------------
 
   record_outputs : process (aclk)
+    -- Function to digit-reverse an integer, to convert output to input ordering
+    function digit_reverse_int ( fwd, width : integer ) return integer is
+      variable rev     : integer;
+      variable fwd_slv : std_logic_vector(width-1 downto 0);
+      variable rev_slv : std_logic_vector(width-1 downto 0);
+    begin
+      fwd_slv := std_logic_vector(to_unsigned(fwd, width));
+      for i in 0 to width/2-1 loop  -- reverse in digit groups (2 bits at a time)
+        rev_slv(i*2+1 downto i*2) := fwd_slv(width-i*2-1 downto width-i*2-2);
+      end loop;
+      if width mod 2 = 1 then  -- width is odd: LSB moves to MSB
+        rev_slv(width-1) := fwd_slv(0);
+      end if;
+      rev := to_integer(unsigned(rev_slv));
+      return rev;
+    end function digit_reverse_int;
+
     variable index : integer := 0;
 
   begin
@@ -527,8 +544,10 @@ begin
       elsif aclken = '1' and m_axis_data_tvalid = '1' and m_axis_data_tready = '1' then
         -- Record output data such that it can be used as input data
         index := op_sample;
-        op_data(index).re <= m_axis_data_tdata(9 downto 0);
-        op_data(index).im <= m_axis_data_tdata(25 downto 16);
+        -- Digit-reverse output sample number, to get actual sample index as outputs are in digit-reversed order
+        index := digit_reverse_int(index, 7);
+        op_data(index).re <= m_axis_data_tdata(10 downto 0);
+        op_data(index).im <= m_axis_data_tdata(26 downto 16);
         -- Increment output sample counter
         if m_axis_data_tlast = '1' then  -- end of output frame: reset sample counter and increment frame counter
           op_sample <= 0;
@@ -600,12 +619,12 @@ begin
   s_axis_config_tdata_scale_sch  <= s_axis_config_tdata(8 downto 1);
 
   -- Data slave channel alias signals
-  s_axis_data_tdata_re           <= s_axis_data_tdata(9 downto 0);
-  s_axis_data_tdata_im           <= s_axis_data_tdata(25 downto 16);
+  s_axis_data_tdata_re           <= s_axis_data_tdata(10 downto 0);
+  s_axis_data_tdata_im           <= s_axis_data_tdata(26 downto 16);
 
   -- Data master channel alias signals
-  m_axis_data_tdata_re           <= m_axis_data_tdata(9 downto 0);
-  m_axis_data_tdata_im           <= m_axis_data_tdata(25 downto 16);
+  m_axis_data_tdata_re           <= m_axis_data_tdata(10 downto 0);
+  m_axis_data_tdata_im           <= m_axis_data_tdata(26 downto 16);
 
 end tb;
 

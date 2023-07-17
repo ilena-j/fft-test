@@ -26,7 +26,7 @@ scipy_fft = fft(data) ** 2
 scipy_fft_freq = fftfreq(N, t_step)
 
 plt.subplot(312)
-plt.plot(scipy_fft_freq, scipy_fft)
+plt.stem(scipy_fft_freq, scipy_fft)
 plt.title('Scipy FFT')
 plt.xlabel('Freq (Hz)')
 

@@ -1,0 +1,7 @@
+0.7
+2020.2
+Oct 14 2022
+05:20:55
+C:/Users/ilena/Documents/apr-private/fpga/fft-test/fft-test.gen/sources_1/ip/xfft_2/sim/xfft_2.vhd,1689438855,vhdl,,,,xfft_2,,,,,,,,
+C:/Users/ilena/Documents/apr-private/fpga/fft-test/fft-test.sim/sim_5/behav/xsim/glbl.v,1665704903,verilog,,,,glbl,,,,,,,,
+C:/Users/ilena/Documents/apr-private/fpga/fft-test/fft-test.srcs/sim_5/new/fft_tb.v,1689446906,verilog,,,,tb_fft,,,../../../../fft-test.gen/sources_1/ip/clk_200MHz,,,,,
